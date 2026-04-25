@@ -20,14 +20,25 @@ body{background:var(--ink);color:var(--cream);
 img{display:block;max-width:100%} a{text-decoration:none;color:inherit} button{font-family:inherit}
 
 /* CURSOR */
-#gac-cur{position:fixed;top:0;left:0;width:6px;height:6px;background:var(--cream);
-  border-radius:50%;pointer-events:none;z-index:9999;
-  will-change:transform;transition:background .25s}
-#gac-ring{position:fixed;top:0;left:0;width:36px;height:36px;
-  border:1px solid rgba(240,237,230,.18);border-radius:50%;pointer-events:none;z-index:9998;
-  will-change:transform;transition:width .4s var(--ease),height .4s var(--ease),border-color .3s}
-.ch #gac-cur{background:var(--gold)}
-.ch #gac-ring{width:52px;height:52px;border-color:rgba(201,169,110,.35)}
+/* ── CURSOR ─────────────────────────────────────────── */
+#gac-cur{
+  position:fixed;top:0;left:0;
+  width:8px;height:8px;
+  border-radius:50%;
+  background:var(--gold);
+  pointer-events:none;
+  z-index:10001;
+  will-change:translate;
+  translate:-4px -4px;
+  box-shadow:0 0 5px 1px rgba(201,169,110,.45);
+  opacity:0;
+  /* ONLY opacity + box-shadow transition — no size, no position */
+  transition:opacity .15s linear,box-shadow .18s linear}
+#gac-ring{display:none}
+/* Hover: ONLY box-shadow changes — zero layout, pure compositor */
+.ch #gac-cur{
+  box-shadow:0 0 9px 3px rgba(201,169,110,.7),
+             0 0 18px 6px rgba(201,169,110,.22)}
 
 /* LOADER */
 #loader{position:fixed;inset:0;background:var(--ink);z-index:10000;
@@ -1567,59 +1578,52 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a){
   });
 });
 
-// CURSOR — GPU-accelerated via transform, idle-hide, touch-suppressed
-var cur=document.getElementById('gac-cur'),ring=document.getElementById('gac-ring');
-var mx=0,my=0,rx=0,ry=0,idleTimer=null,isTouchOnly=false;
+// CURSOR — circle, gold, zero glitch
+(function(){
+  var cur = document.getElementById('gac-cur');
+  if(!cur) return;
 
-// Suppress entirely on touch-only devices
-window.addEventListener('touchstart',function(){
-  isTouchOnly=true;
-  cur.style.opacity='0';ring.style.opacity='0';
-},{once:true,passive:true});
+  var isTouchOnly = false;
+  var idleTimer   = null;
+  var active      = false;
 
-function showCursor(){
-  cur.style.opacity='1';ring.style.opacity='1';
-}
-function hideCursor(){
-  cur.style.opacity='0';ring.style.opacity='0';
-  document.body.classList.remove('ch');
-}
-
-// Initial state — hidden until mouse moves
-cur.style.cssText+=';transition:opacity .2s';
-ring.style.cssText+=';transition:opacity .3s';
-cur.style.opacity='0';ring.style.opacity='0';
-
-document.addEventListener('mousemove',function(e){
-  if(isTouchOnly)return;
-  mx=e.clientX;my=e.clientY;
-  // Dot snaps instantly via transform (no layout reflow)
-  cur.style.transform='translate(calc('+mx+'px - 50%),calc('+my+'px - 50%))';
-  showCursor();
-  clearTimeout(idleTimer);
-  idleTimer=setTimeout(hideCursor,500);
-},{passive:true});
-
-document.addEventListener('mouseleave',hideCursor);
-
-// Ring follows via lerp rAF loop — transform only, no left/top (GPU composited)
-(function loop(){
-  rx+=(mx-rx)*.18;ry+=(my-ry)*.18;
-  ring.style.transform='translate(calc('+rx+'px - 50%),calc('+ry+'px - 50%))';
-  requestAnimationFrame(loop);
-})();
-
-// Hover state — event delegation avoids child-element flicker on cards
-var hoverSel='a,button,.jcard,.bmc,.proc-card,.m-stat,.jfbtn';
-document.addEventListener('mouseover',function(e){
-  if(isTouchOnly)return;
-  if(e.target.closest(hoverSel))document.body.classList.add('ch');
-});
-document.addEventListener('mouseout',function(e){
-  // Only remove ch if we're leaving to something outside the hover targets
-  if(!e.relatedTarget||!e.relatedTarget.closest(hoverSel))
+  // Kill everything on first touch
+  window.addEventListener('touchstart', function(){
+    isTouchOnly = true;
+    cur.style.opacity = '0';
     document.body.classList.remove('ch');
-});
+  }, {once:true, passive:true});
+
+  function show(){ if(!active){ active=true; cur.style.opacity='1'; } }
+  function hide(){ active=false; cur.style.opacity='0'; document.body.classList.remove('ch'); }
+
+  // Hover selector — everything interactive
+  var hSel = 'a,button,.jcard,.jfbtn,.po-cta,.cm-send,.bmc,.proc-card,.m-stat,.jcard-visual,.jcard-info';
+
+  document.addEventListener('pointermove', function(e){
+    if(e.pointerType !== 'mouse') return;
+
+    var x = e.clientX, y = e.clientY;
+
+    // Direct translate — no calc, no rAF, no lerp, no reflow
+    cur.style.translate = (x - 4) + 'px ' + (y - 4) + 'px';
+
+    // elementFromPoint: check hover state on EVERY move
+    // — immune to compositing layer boundaries and image layers
+    var el = document.elementFromPoint(x, y);
+    if(el && el.closest(hSel)){
+      document.body.classList.add('ch');
+    } else {
+      document.body.classList.remove('ch');
+    }
+
+    show();
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(hide, 2500);
+  }, {passive:true});
+
+  document.addEventListener('pointerleave', hide, {passive:true});
+})();
 
 // COMMISSION FORM — Formspree AJAX (no page reload)
 var commForm=document.getElementById('commissionForm');
